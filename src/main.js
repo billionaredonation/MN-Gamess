@@ -4,7 +4,7 @@ import { initRuntime, getState } from './state.js';
 import '../pages/welcome1/welcome1.js?v=102';
 import '../pages/welcome2/welcome2.js?v=102';
 import '../pages/welcome3/welcome3.js?v=108';
-import '../pages/home/home.js?v=101';
+import '../pages/home/home-screen.js?v=101';
 
 function renderBootError(error) {
   console.error(error);
