@@ -1,42 +1,40 @@
-- name: Upload to Supabase
-  env:
-    SUPA_URL: ${{ secrets.SUPA_URL }}
-    SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
-    NEW_VER: ${{ github.ref_name }}           # v1.0.5 ➜ берём без "v"
-  run: |
-    node - <<'NODE'
-    import { createClient } from '@supabase/supabase-js';
-    import fg   from 'fast-glob';
-    import fs   from 'fs/promises';
-    import path from 'path';
-    import { fileTypeFromBuffer } from 'file-type';
+# .github/workflows/release.yml  ── внутри jobs.build.steps
+      - name: Upload to Supabase
+        env:
+          SUPA_URL: ${{ secrets.SUPA_URL }}
+          SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
+          NEW_VER: ${{ github.ref_name }}          # v1.0.5 → берём как есть
+        run: |
+          node <<'NODE'
+          import { createClient } from '@supabase/supabase-js';
+          import fg   from 'fast-glob';
+          import fs   from 'fs/promises';
+          import { fileTypeFromBuffer } from 'file-type';
 
-    const url  = process.env.SUPA_URL;
-    const key  = process.env.SUPA_SERVICE_KEY;
-    const ver  = process.env.NEW_VER.replace(/^v/, '');   // 1.0.5
-    const supa = createClient(url, key);
+          const url  = process.env.SUPA_URL;
+          const key  = process.env.SUPA_SERVICE_KEY;
+          const ver  = process.env.NEW_VER.replace(/^v/, '');  // 1.0.5
 
-    function guessType(name, buf) {
-      if (name.endsWith('.html')) return 'text/html';
-      if (name.endsWith('.js'))   return 'text/javascript';
-      if (name.endsWith('.css'))  return 'text/css';
-      return fileTypeFromBuffer(buf)?.mime || 'application/octet-stream';
-    }
+          const supa = createClient(url, key);
 
-    for (const file of await fg('**/*', { cwd: 'dist', dot: true })) {
-      const data = await fs.readFile(`dist/${file}`);
-      const mime = guessType(file, data);
+          function mime(name, buf) {
+            if (name.endsWith('.html')) return 'text/html';
+            if (name.endsWith('.js'))   return 'text/javascript';
+            if (name.endsWith('.css'))  return 'text/css';
+            return fileTypeFromBuffer(buf)?.mime || 'application/octet-stream';
+          }
 
-      await supa.storage.from('releases')
-        .upload(`releases/${ver}/${file}`, data,
-                { upsert: true, contentType: mime });
+          for (const file of await fg('**/*', { cwd: 'dist', dot: true })) {
+            const data = await fs.readFile(`dist/${file}`);
+            await supa.storage.from('releases')
+              .upload(`releases/${ver}/${file}`, data,
+                      { upsert: true, contentType: mime(file, data) });
+            console.log('uploaded', file);
+          }
 
-      console.log('uploaded', file, '→', mime);
-    }
+          await supa.from('settings')
+            .update({ front_version: ver, release_path: `releases/${ver}` })
+            .eq('id', true);
 
-    await supa.from('settings')
-      .update({ front_version: ver, release_path: `releases/${ver}` })
-      .eq('id', true);
-
-    console.log('✅ Supabase switched to', ver);
-    NODE
+          console.log('✅ switched to', ver);
+          NODE
