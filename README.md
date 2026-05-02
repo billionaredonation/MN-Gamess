@@ -1,1 +1,1 @@
-# MN-Gamess
+# Mn-game
