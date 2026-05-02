@@ -1,23 +1,15 @@
-name: Publish front
-
-on:
-  push:
-    tags: ['v*']   # git tag v1.4.3
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 24 }
-      - run: npm run build
-      - run: |
-          NEW_VER=${GITHUB_REF#refs/tags/v}
-          node scripts/publish_release.mjs
-        env:
-          SUPA_URL: ${{ secrets.SUPA_URL }}
-          SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
-          NEW_VER: ${{ github.ref_name }}
+
+      - uses: actions/setup-node@v4          # остаётся
+        with: { node-version: 24 }           # можно 20, но 24 — без предупреждений
+
+      # ➜ ДОБАВЬТЕ ЭТОТ ШАГ
+      - name: Install deps
+        run: npm install                     # ставит vite и всё остальное
+
+      - name: Build front
+        run: npm run build                   # теперь vite есть, сборка пройдёт
