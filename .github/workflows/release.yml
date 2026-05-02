@@ -1,59 +1,42 @@
-name: Publish front
+- name: Upload to Supabase
+  env:
+    SUPA_URL: ${{ secrets.SUPA_URL }}
+    SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
+    NEW_VER: ${{ github.ref_name }}           # v1.0.5 ➜ берём без "v"
+  run: |
+    node - <<'NODE'
+    import { createClient } from '@supabase/supabase-js';
+    import fg   from 'fast-glob';
+    import fs   from 'fs/promises';
+    import path from 'path';
+    import { fileTypeFromBuffer } from 'file-type';
 
-on:
-  push:
-    tags: ['v*']              # срабатываем на тег вида  v1.0.0, v1.0.1 …
+    const url  = process.env.SUPA_URL;
+    const key  = process.env.SUPA_SERVICE_KEY;
+    const ver  = process.env.NEW_VER.replace(/^v/, '');   // 1.0.5
+    const supa = createClient(url, key);
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+    function guessType(name, buf) {
+      if (name.endsWith('.html')) return 'text/html';
+      if (name.endsWith('.js'))   return 'text/javascript';
+      if (name.endsWith('.css'))  return 'text/css';
+      return fileTypeFromBuffer(buf)?.mime || 'application/octet-stream';
+    }
 
-    steps:
-      # 1. Клонируем репозиторий
-      - uses: actions/checkout@v4
+    for (const file of await fg('**/*', { cwd: 'dist', dot: true })) {
+      const data = await fs.readFile(`dist/${file}`);
+      const mime = guessType(file, data);
 
-      # 2. Ставим Node 24
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
+      await supa.storage.from('releases')
+        .upload(`releases/${ver}/${file}`, data,
+                { upsert: true, contentType: mime });
 
-      # 3. Ставим зависимости (vite, fast-glob, supabase-js …)
-      - name: Install deps
-        run: npm install
+      console.log('uploaded', file, '→', mime);
+    }
 
-      # 4. Сборка фронта в папку dist/
-      - name: Build front
-        run: npm run build
+    await supa.from('settings')
+      .update({ front_version: ver, release_path: `releases/${ver}` })
+      .eq('id', true);
 
-      # 5. Публикуем релиз в Supabase и обновляем таблицу settings
-      - name: Upload to Supabase
-        env:
-          SUPA_URL: ${{ secrets.SUPA_URL }}            # https://xyz.supabase.co
-          SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
-          NEW_VER: ${{ github.ref_name }}              # v1.0.0 → берём как есть
-        run: |
-          node - <<'NODE'
-          import { createClient } from '@supabase/supabase-js';
-          import fg from 'fast-glob';
-          import fs from 'fs/promises';
-
-          const url   = process.env.SUPA_URL;
-          const key   = process.env.SUPA_SERVICE_KEY;
-          const ver   = process.env.NEW_VER.replace(/^v/, '');   // 1.0.0
-          const supa  = createClient(url, key);
-
-          // Загружаем все файлы из dist/  ➜  bucket releases/<ver>/
-          for (const file of await fg('**/*', { cwd: 'dist', dot: true })) {
-            const data = await fs.readFile(`dist/${file}`);
-            await supa.storage.from('releases')
-              .upload(`releases/${ver}/${file}`, data, { upsert: true });
-            console.log('uploaded', file);
-          }
-
-          // Обновляем таблицу settings
-          await supa.from('settings')
-            .update({ front_version: ver, release_path: `releases/${ver}` })
-            .eq('id', true);
-
-          console.log('✅ Supabase updated to version', ver);
-          NODE
+    console.log('✅ Supabase switched to', ver);
+    NODE
