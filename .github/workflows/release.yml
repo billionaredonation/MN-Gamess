@@ -1,10 +1,11 @@
-# .github/workflows/release.yml  ── внутри jobs.build.steps
-      - name: Upload to Supabase
-         env:
-           SUPA_URL: ${{ secrets.SUPA_URL }}
-            SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
-           NEW_VER: ${{ github.ref_name }}          # v1.0.5 → берём как есть
-         run: |
+
+
+      - name: Upload to Supabase          # ← как было
+         env:                              # ← два пробела перед env
+          SUPA_URL: ${{ secrets.SUPA_URL }}
+          SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
+          NEW_VER: ${{ github.ref_name }}         # v1.0.6
+        run: |                             # ← тот же уровень, что и env
           node <<'NODE'
           import { createClient } from '@supabase/supabase-js';
           import fg   from 'fast-glob';
@@ -13,7 +14,7 @@
 
           const url  = process.env.SUPA_URL;
           const key  = process.env.SUPA_SERVICE_KEY;
-          const ver  = process.env.NEW_VER.replace(/^v/, '');  // 1.0.5
+          const ver  = process.env.NEW_VER.replace(/^v/, '');
 
           const supa = createClient(url, key);
 
@@ -24,12 +25,12 @@
             return fileTypeFromBuffer(buf)?.mime || 'application/octet-stream';
           }
 
-          for (const file of await fg('**/*', { cwd: 'dist', dot: true })) {
-            const data = await fs.readFile(`dist/${file}`);
+          for (const f of await fg('**/*', { cwd: 'dist', dot: true })) {
+            const data = await fs.readFile(`dist/${f}`);
             await supa.storage.from('releases')
-              .upload(`releases/${ver}/${file}`, data,
-                      { upsert: true, contentType: mime(file, data) });
-            console.log('uploaded', file);
+              .upload(`releases/${ver}/${f}`, data,
+                      { upsert: true, contentType: mime(f, data) });
+            console.log('uploaded', f);
           }
 
           await supa.from('settings')
