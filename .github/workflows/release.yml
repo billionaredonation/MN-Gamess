@@ -1,10 +1,10 @@
 # .github/workflows/release.yml  ── внутри jobs.build.steps
       - name: Upload to Supabase
-        env:
-          SUPA_URL: ${{ secrets.SUPA_URL }}
-          SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
-          NEW_VER: ${{ github.ref_name }}          # v1.0.5 → берём как есть
-        run: |
+         env:
+           SUPA_URL: ${{ secrets.SUPA_URL }}
+            SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
+           NEW_VER: ${{ github.ref_name }}          # v1.0.5 → берём как есть
+         run: |
           node <<'NODE'
           import { createClient } from '@supabase/supabase-js';
           import fg   from 'fast-glob';
