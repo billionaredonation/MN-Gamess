@@ -1,27 +1,28 @@
-import { register } from '../../src/router.js';
-import { state, save } from '../../src/state.js';
-import { getCityConfig, normalizeCityId } from '../../src/cities/index.js';
-import { updateBuild } from '../../src/update.js';
+/* pages/home/home-screen.js – карта + одна кнопка «Обновить» */
+import { register }          from '../../src/router.js';
+import { state, save }       from '../../src/state.js';
+import { updateBuild }       from '../../src/update.js';
+import { getCityConfig,
+         normalizeCityId }   from '../../src/cities/index.js';
 
-const V = '34';                                // версия кэша карт
+const V = '34';                               // кеш-метка карт
 
-function money(v) { return v.toLocaleString('ru-RU') + ' грн'; }
+const money = (v = 0) => v.toLocaleString('ru-RU') + ' ₴';
 
 register('home', (root) => {
   root.className = 'page home';
 
-  /* ── определяем город пользователя ──────────────────── */
-  const normalizedCityId = normalizeCityId(state.city);
-  const city             = getCityConfig(normalizedCityId);
+  /* ── город игрока ───────────────────────────────────── */
+  const normalized = normalizeCityId(state.city);
+  const city       = getCityConfig(normalized);
 
-  if (state.city !== normalizedCityId) {
-    state.city = normalizedCityId;
+  if (state.city !== normalized) {
+    state.city = normalized;
     save();
   }
-
   root.dataset.city = city.id;
 
-  /* ── разметка ────────────────────────────────────────── */
+  /* ── разметка ───────────────────────────────────────── */
   root.innerHTML = `
     <main class="home-gameplay">
       <div class="home-ocean" aria-hidden="true"></div>
@@ -35,12 +36,13 @@ register('home', (root) => {
             <strong>${city.name}</strong>
           </div>
 
-          <!-- 💡 единственная кнопка -->
-          <button class="home-update-btn" id="updateBtn" type="button">Обновить</button>
+          <button class="home-update-btn" id="updateBtn" type="button">
+            Обновить
+          </button>
         </div>
       </section>
 
-      <aside class="home-city-panel" id="homeInfo">
+      <aside class="home-city-panel">
         <div class="home-city-heading">
           <span>Главное меню</span>
           <h3>${city.tagline}</h3>
@@ -55,12 +57,13 @@ register('home', (root) => {
     </main>
   `;
 
-  /* ── обработчики ─────────────────────────────────────── */
-  const cityMapImage = root.querySelector('.city-map-image');
-  cityMapImage.addEventListener('error', () => {
-    cityMapImage.onerror = null;
-    cityMapImage.src = './UkraineMap.png?v=' + V;
+  /* ── запасная карта ─────────────────────────────────── */
+  const img = root.querySelector('.city-map-image');
+  img.addEventListener('error', () => {
+    img.onerror = null;
+    img.src = './UkraineMap.png?v=' + V;
   });
 
+  /* ── кнопка «Обновить» ─────────────────────────────── */
   root.querySelector('#updateBtn').onclick = () => updateBuild(false);
 });
