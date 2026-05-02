@@ -4,10 +4,13 @@
   "scripts": {
     "build": "vite build"
   },
-  "devDependencies": { "vite": "^5.2.0" },
+  "devDependencies": {
+    "vite": "^5.2.0"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.41.5",
     "semver": "^7.6.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "fast-glob": "^3.3.2"
   }
 }
