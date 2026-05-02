@@ -1,14 +1,14 @@
-import { show } from './router.js';
+import { show }                from './router.js';
 import { initRuntime, getState } from './state.js';
 
-import '../pages/welcome1/welcome1.js?v=102';
-import '../pages/welcome2/welcome2.js?v=102';
-import '../pages/welcome3/welcome3.js?v=108';
-import '../pages/home/home-screen.js?v=101';
+// статические страницы
+import '../pages/welcome1/welcome1.js';
+import '../pages/welcome2/welcome2.js';
+import '../pages/welcome3/welcome3.js';
+import '../pages/home/home-screen.js';   // ⬅ без ?v
 
 function renderBootError(error) {
   console.error(error);
-
   const root = document.getElementById('app');
   if (!root) return;
 
@@ -37,19 +37,11 @@ async function boot() {
     initRuntime();
 
     const state = getState();
-
     const nickname = state.nickname || state.player?.nickname;
-    const city = state.city || state.player?.city;
+    const city     = state.city     || state.player?.city;
 
-    if (!nickname) {
-      show('welcome1');
-      return;
-    }
-
-    if (!city) {
-      show('welcome3');
-      return;
-    }
+    if (!nickname) { show('welcome1'); return; }
+    if (!city)     { show('welcome3'); return; }
 
     show('home');
   } catch (error) {
