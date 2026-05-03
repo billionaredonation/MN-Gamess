@@ -1,41 +1,36 @@
+    - name: Upload to Supabase
+      env:
+        SUPA_URL: ${{ secrets.SUPA_URL }}
+        SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
+        NEW_VER: ${{ github.ref_name }}
+       run: |
+        node <<'NODE'
+        import { createClient } from '@supabase/supabase-js';
+        import fg  from 'fast-glob';
+        import fs  from 'fs/promises';
+        import { fileTypeFromBuffer } from 'file-type';
 
+        const ver  = process.env.NEW_VER.replace(/^v/, '');
+        const supa = createClient(process.env.SUPA_URL, process.env.SUPA_SERVICE_KEY);
 
-      - name: Upload to Supabase          # ← как было
-         env:                              # ← два пробела перед env
-          SUPA_URL: ${{ secrets.SUPA_URL }}
-          SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
-          NEW_VER: ${{ github.ref_name }}         # v1.0.6
-        run: |                             # ← тот же уровень, что и env
-          node <<'NODE'
-          import { createClient } from '@supabase/supabase-js';
-          import fg   from 'fast-glob';
-          import fs   from 'fs/promises';
-          import { fileTypeFromBuffer } from 'file-type';
+        function mime(name, buf) {
+          if (name.endsWith('.html')) return 'text/html';
+          if (name.endsWith('.js'))   return 'text/javascript';
+          if (name.endsWith('.css'))  return 'text/css';
+          return fileTypeFromBuffer(buf)?.mime || 'application/octet-stream';
+        }
 
-          const url  = process.env.SUPA_URL;
-          const key  = process.env.SUPA_SERVICE_KEY;
-          const ver  = process.env.NEW_VER.replace(/^v/, '');
+        for (const f of await fg('**/*', { cwd: 'dist', dot: true })) {
+          const data = await fs.readFile(`dist/${f}`);
+          await supa.storage.from('releases')
+            .upload(`releases/${ver}/${f}`, data,
+                    { upsert: true, contentType: mime(f, data) });
+          console.log('uploaded', f);
+        }
 
-          const supa = createClient(url, key);
+        await supa.from('settings')
+          .update({ front_version: ver, release_path: `releases/${ver}` })
+          .eq('id', true);
 
-          function mime(name, buf) {
-            if (name.endsWith('.html')) return 'text/html';
-            if (name.endsWith('.js'))   return 'text/javascript';
-            if (name.endsWith('.css'))  return 'text/css';
-            return fileTypeFromBuffer(buf)?.mime || 'application/octet-stream';
-          }
-
-          for (const f of await fg('**/*', { cwd: 'dist', dot: true })) {
-            const data = await fs.readFile(`dist/${f}`);
-            await supa.storage.from('releases')
-              .upload(`releases/${ver}/${f}`, data,
-                      { upsert: true, contentType: mime(f, data) });
-            console.log('uploaded', f);
-          }
-
-          await supa.from('settings')
-            .update({ front_version: ver, release_path: `releases/${ver}` })
-            .eq('id', true);
-
-          console.log('✅ switched to', ver);
-          NODE
+        console.log('✅ switched to', ver);
+        NODE
