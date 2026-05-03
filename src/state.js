@@ -1,58 +1,61 @@
 import { citiesBase } from './data/citiesBase.js';
-import { supabase } from './supabaseClient.js';
+import { supabase }   from './supabaseClient.js';
 
-const LS_KEY = 'mn-game-state';
+/* ---------- 1. ключи локального хранилища ---------- */
+const LS_KEY  = 'mn-game-state';
 const DEV_KEY = 'deviceId';
 
+/* ---------- 2. состояние по умолчанию ---------- */
 const defaultState = {
-  nickname: null,
-  city: null,
-  cityName: null,
-  regionId: null,
-  player: {},
+  nickname:      null,
+  city:          null,
+  cityName:      null,
+  regionId:      null,
+  player:        {},
   citiesRuntime: {}
 };
 
+/* ---------- 3. helpers ---------- */
 function clone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
 function makeDeviceId() {
-  if (window.crypto && crypto.randomUUID) {
+  if (window.crypto && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-
   return `dev-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function getDeviceId() {
   let id = localStorage.getItem(DEV_KEY);
-
   if (!id) {
     id = makeDeviceId();
     localStorage.setItem(DEV_KEY, id);
   }
-
   return id;
 }
 
 function normalizeLoadedState(loaded) {
-  loaded.player = loaded.player || {};
+  loaded.player        = loaded.player        || {};
   loaded.citiesRuntime = loaded.citiesRuntime || {};
 
   loaded.nickname = loaded.nickname || loaded.player.nickname || null;
-  loaded.city = loaded.city || loaded.player.city || null;
+  loaded.city     = loaded.city     || loaded.player.city     || null;
   loaded.cityName = loaded.cityName || loaded.player.cityName || null;
   loaded.regionId = loaded.regionId || loaded.player.regionId || null;
 
   return loaded;
 }
 
+/* ---------- 4. локальная загрузка ---------- */
 function loadLocal() {
   try {
     const savedRaw = localStorage.getItem(LS_KEY);
-    const saved = savedRaw ? JSON.parse(savedRaw) : null;
-    const loaded = saved ? Object.assign(clone(defaultState), saved) : clone(defaultState);
+    const saved    = savedRaw ? JSON.parse(savedRaw) : null;
+    const loaded   = saved
+      ? Object.assign(clone(defaultState), saved)
+      : clone(defaultState);
 
     return normalizeLoadedState(loaded);
   } catch (error) {
@@ -61,12 +64,14 @@ function loadLocal() {
   }
 }
 
+/* ---------- 5. глобальное состояние ---------- */
 export let state = loadLocal();
 
 export function getState() {
   return state;
 }
 
+/* ---------- 6. удалённая загрузка ---------- */
 export async function loadRemote() {
   try {
     const { data, error } = await supabase
@@ -81,6 +86,7 @@ export async function loadRemote() {
     }
 
     if (!data || !data.data) {
+      // записи ещё нет → создаём первую
       await saveRemote();
       return;
     }
@@ -93,6 +99,7 @@ export async function loadRemote() {
       remoteData
     );
 
+    // обратная совместимость со старым форматом payload-а
     if (remoteData.runtime && !remoteData.citiesRuntime) {
       merged.citiesRuntime = remoteData.runtime;
     }
@@ -104,16 +111,16 @@ export async function loadRemote() {
   }
 }
 
+/* ---------- 7. сохранение ---------- */
 export function save() {
   saveLocal();
-  saveRemote();
+  saveRemote();   // fire-and-forget
 }
 
 function saveLocal() {
-  state.player = state.player || {};
-
+  state.player          = state.player || {};
   state.player.nickname = state.nickname || null;
-  state.player.city = state.city || null;
+  state.player.city     = state.city     || null;
   state.player.cityName = state.cityName || null;
   state.player.regionId = state.regionId || null;
 
@@ -129,8 +136,8 @@ async function saveRemote() {
     const { error } = await supabase
       .from('game_state')
       .upsert({
-        device_id: getDeviceId(),
-        data: state,
+        device_id:  getDeviceId(),
+        data:       state,
         updated_at: new Date().toISOString()
       });
 
@@ -142,6 +149,7 @@ async function saveRemote() {
   }
 }
 
+/* ---------- 8. mutators ---------- */
 export function setState(path, value) {
   const keys = path.split('.');
   let obj = state;
@@ -162,21 +170,21 @@ export function updateRuntime(cityId, patch) {
     state.citiesRuntime[cityId] || {},
     patch
   );
-
   save();
 }
 
 export function initRuntime() {
   state.citiesRuntime = state.citiesRuntime || {};
-
   if (Object.keys(state.citiesRuntime).length) return;
 
   const blank = {};
-
-  for (const id in citiesBase) {
-    blank[id] = {};
-  }
+  for (const id in citiesBase) blank[id] = {};
 
   state.citiesRuntime = blank;
   save();
 }
+
+/* ---------- 9. авто-инициализация ---------- */
+// подтянем удалённое состояние, как только модуль импортируется.
+// если связи нет — продолжаем работать на локальных данных.
+loadRemote();
