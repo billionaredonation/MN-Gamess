@@ -1,135 +1,182 @@
-/* ---------- 1. зависимости ---------- */
-import { createClient } from '@supabase/supabase-js';
-import { v4 as uuid }   from 'uuid';
-import { citiesBase }   from './data/citiesBase.js';
+import { citiesBase } from './data/citiesBase.js';
+import { supabase } from './supabaseClient.js';
 
-/* ---------- 2. Supabase клиент ---------- */
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  { auth: { persistSession: false } }
-);
+const LS_KEY = 'mn-game-state';
+const DEV_KEY = 'deviceId';
 
-/* ---------- 3. постоянные ключи ---------- */
-const LS_KEY   = 'mn-game-state';
-const DEV_KEY  = 'deviceId';
-
-/* ---------- 4. состояние по умолчанию ---------- */
 const defaultState = {
-  nickname     : null,
-  city         : null,
-  cityName     : null,
-  regionId     : null,
-  player       : {},
+  nickname: null,
+  city: null,
+  cityName: null,
+  regionId: null,
+  player: {},
   citiesRuntime: {}
 };
 
-/* ---------- 5. helpers ---------- */
 function clone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
-function deviceId() {
+
+function makeDeviceId() {
+  if (window.crypto && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `dev-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getDeviceId() {
   let id = localStorage.getItem(DEV_KEY);
+
   if (!id) {
-    id = uuid();
+    id = makeDeviceId();
     localStorage.setItem(DEV_KEY, id);
   }
+
   return id;
 }
 
-/* ---------- 6. локальная загрузка ---------- */
+function normalizeLoadedState(loaded) {
+  loaded.player = loaded.player || {};
+  loaded.citiesRuntime = loaded.citiesRuntime || {};
+
+  loaded.nickname = loaded.nickname || loaded.player.nickname || null;
+  loaded.city = loaded.city || loaded.player.city || null;
+  loaded.cityName = loaded.cityName || loaded.player.cityName || null;
+  loaded.regionId = loaded.regionId || loaded.player.regionId || null;
+
+  return loaded;
+}
+
 function loadLocal() {
   try {
-    const saved  = JSON.parse(localStorage.getItem(LS_KEY));
-    const loaded = saved ? Object.assign(clone(defaultState), saved)
-                         : clone(defaultState);
+    const savedRaw = localStorage.getItem(LS_KEY);
+    const saved = savedRaw ? JSON.parse(savedRaw) : null;
+    const loaded = saved ? Object.assign(clone(defaultState), saved) : clone(defaultState);
 
-    const p = loaded.player || {};
-    loaded.nickname = loaded.nickname || p.nickname || null;
-    loaded.city     = loaded.city     || p.city     || null;
-    loaded.cityName = loaded.cityName || p.cityName || null;
-    loaded.regionId = loaded.regionId || p.regionId || null;
-    return loaded;
-  } catch {                       // битые данные – начинаем с чистого
+    return normalizeLoadedState(loaded);
+  } catch (error) {
+    console.warn('Unable to load local state', error);
     return clone(defaultState);
   }
 }
 
-/* ---------- 7. глобальное состояние ---------- */
 export let state = loadLocal();
 
-/* ---------- 8. PUBLIC API ---------- */
+export function getState() {
+  return state;
+}
+
 export async function loadRemote() {
-  /* тянем JSON из БД, объединяем с локальным состоянием */
-  const { data, error } = await supabase
-    .from('game_state')
-    .select('data')
-    .eq('device_id', deviceId())
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('game_state')
+      .select('data')
+      .eq('device_id', getDeviceId())
+      .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') {   // 116 = record not found
-    console.warn('Supabase load failed → работаем оффлайн', error);
-    return;
+    if (error) {
+      console.warn('Supabase load failed. Local state used.', error);
+      return;
+    }
+
+    if (!data || !data.data) {
+      await saveRemote();
+      return;
+    }
+
+    const remoteData = data.data;
+
+    const merged = Object.assign(
+      clone(defaultState),
+      state,
+      remoteData
+    );
+
+    if (remoteData.runtime && !remoteData.citiesRuntime) {
+      merged.citiesRuntime = remoteData.runtime;
+    }
+
+    state = normalizeLoadedState(merged);
+    saveLocal();
+  } catch (error) {
+    console.warn('Remote load crashed. Local state used.', error);
   }
-
-  if (data?.data) {
-    state = Object.assign(clone(defaultState), state, data.data);
-    saveLocal();                              // держим LS в актуальном виде
-  } else if (!error) {
-    /* записи ещё нет → создаём первую строку */
-    await saveRemote();                       // no await needed, but keep order
-  }
 }
 
-export function getState()               { return state; }
-export function setState(path, value)    { deepSet(path, value); }
-export function updateRuntime(id, patch) {
-  state.citiesRuntime[id] = Object.assign({}, state.citiesRuntime[id] || {}, patch);
-  save();                                // fire-and-forget
-}
-export function initRuntime() {
-  if (Object.keys(state.citiesRuntime || {}).length) return;
-  const blank = {};
-  for (const id in citiesBase) blank[id] = {};
-  state.citiesRuntime = blank;
-  saveLocal();
-}
-
-/* ---------- 9. сохранение ---------- */
 export function save() {
   saveLocal();
-  saveRemote();          // не блокируем игру, поэтому без await
+  saveRemote();
 }
 
-/* --- внутренние реализации --- */
 function saveLocal() {
-  state.player               = state.player || {};
-  state.player.nickname      = state.nickname || null;
-  state.player.city          = state.city     || null;
-  state.player.cityName      = state.cityName || null;
-  state.player.regionId      = state.regionId || null;
+  state.player = state.player || {};
 
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-  catch (err) { console.warn('Unable to save to LS', err); }
+  state.player.nickname = state.nickname || null;
+  state.player.city = state.city || null;
+  state.player.cityName = state.cityName || null;
+  state.player.regionId = state.regionId || null;
+
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn('Unable to save game state locally', error);
+  }
 }
 
 async function saveRemote() {
-  const payload = { runtime: state.citiesRuntime };     // лёгкие данные в JSON
-  const { error } = await supabase.from('game_state').upsert({
-    device_id: deviceId(),
-    data     : payload
-  });
-  if (error) console.warn('Supabase save failed', error);
+  try {
+    const { error } = await supabase
+      .from('game_state')
+      .upsert({
+        device_id: getDeviceId(),
+        data: state,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.warn('Supabase save failed', error);
+    }
+  } catch (error) {
+    console.warn('Remote save crashed', error);
+  }
 }
 
-function deepSet(path, value) {
+export function setState(path, value) {
   const keys = path.split('.');
-  let o = state;
-  keys.slice(0, -1).forEach(k => { if (!o[k]) o[k] = {}; o = o[k]; });
-  o[keys.at(-1)] = value;
+  let obj = state;
+
+  keys.slice(0, -1).forEach((key) => {
+    if (!obj[key]) obj[key] = {};
+    obj = obj[key];
+  });
+
+  obj[keys[keys.length - 1]] = value;
   save();
 }
 
-/* ---------- 10. авто-инициализация ---------- */
-loadRemote();              // ⇢ подтянет данные как только приложение загрузится
-initRuntime();             // ⇢ запишет пустые runtime для новых городов
+export function updateRuntime(cityId, patch) {
+  state.citiesRuntime = state.citiesRuntime || {};
+  state.citiesRuntime[cityId] = Object.assign(
+    {},
+    state.citiesRuntime[cityId] || {},
+    patch
+  );
+
+  save();
+}
+
+export function initRuntime() {
+  state.citiesRuntime = state.citiesRuntime || {};
+
+  if (Object.keys(state.citiesRuntime).length) return;
+
+  const blank = {};
+
+  for (const id in citiesBase) {
+    blank[id] = {};
+  }
+
+  state.citiesRuntime = blank;
+  save();
+}
