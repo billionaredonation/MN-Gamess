@@ -1,11 +1,17 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://xqgopvdqcvqikvnbxxyc.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_iAAN9KsQ4Z-qAsoNtXEYAw_9Uh5VV8o
-';
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: false
-  }
-});
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error(
+    'Supabase env vars missing. ' +
+    'Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY at build time.'
+  );
+}
+
+export const supabase = createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  { auth: { persistSession: false } }
+);
