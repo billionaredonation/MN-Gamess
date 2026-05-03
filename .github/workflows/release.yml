@@ -23,16 +23,19 @@ jobs:
       - name: Install deps
         run: npm install
 
-      # ————————————————— 4. Собираем фронт
+      # ————————————————— 4. Собираем фронт (Vite вшивает env в бандл)
       - name: Build
-        run: npm run build            # после этого папка dist/ готова
+        env:
+          VITE_SUPABASE_URL:      ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
 
       # ————————————————— 5. Заливаем в Supabase
       - name: Upload to Supabase
         env:
-          SUPA_URL: ${{ secrets.SUPA_URL }}
+          SUPA_URL:         ${{ secrets.SUPA_URL }}
           SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
-          NEW_VER: ${{ github.ref_name }}          # v1.0.7 → передаём как есть
+          NEW_VER:          ${{ github.ref_name }}
         run: |
           node <<'NODE'
           import { createClient } from '@supabase/supabase-js';
@@ -40,7 +43,7 @@ jobs:
           import fs  from 'fs/promises';
           import { fileTypeFromBuffer } from 'file-type';
 
-          const ver  = process.env.NEW_VER.replace(/^v/, '');       // 1.0.7
+          const ver  = process.env.NEW_VER.replace(/^v/, '');
           const supa = createClient(process.env.SUPA_URL,
                                     process.env.SUPA_SERVICE_KEY);
 
